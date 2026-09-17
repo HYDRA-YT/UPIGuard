@@ -1,0 +1,181 @@
+// Headless end-to-end test of UPIGuard using Edge/Chrome via CDP.
+// Uses puppeteer-core pointed at the system browser. Run with:
+//   node test/e2e.mjs
+import puppeteer from 'puppeteer-core';
+import { createWriteStream } from 'fs';
+
+const EDGE = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
+const CHROME = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+const executablePath = await import('fs').then(fs => {
+  return fs.existsSync(EDGE) ? EDGE : CHROME;
+});
+
+const BASE = 'http://localhost:5173';
+const results = [];
+let browser;
+
+function log(ok, msg) {
+  const tag = ok ? 'PASS' : 'FAIL';
+  results.push({ ok, msg });
+  console.log(`[${tag}] ${msg}`);
+}
+
+async function waitFor(selector, page, timeout = 8000) {
+  await page.waitForSelector(selector, { timeout });
+}
+
+async function resetDemo() {
+  await fetch('http://localhost:3001/api/reset', { method: 'POST' });
+  await new Promise(r => setTimeout(r, 300));
+}
+
+try {
+  browser = await puppeteer.launch({
+    executablePath,
+    headless: 'new',
+    args: ['--no-sandbox', '--disable-gpu'],
+  });
+  await resetDemo();
+  const page = await browser.newPage();
+  await page.setViewport({ width: 1440, height: 900 });
+  const errors = [];
+  page.on('console', msg => {
+    if (msg.type() === 'error') errors.push(msg.text());
+  });
+  page.on('pageerror', err => errors.push(String(err)));
+
+  // 1. Dashboard loads
+  await page.goto(BASE, { waitUntil: 'networkidle2', timeout: 15000 });
+  await waitFor('h1', page);
+  log(true, 'Dashboard loads');
+  await page.waitForSelector('.stat-card', { timeout: 8000 });
+  await page.waitForFunction(() => document.body.textContent.includes('Personal Baseline'), { timeout: 8000 }).catch(() => {});
+  const statsText = await page.evaluate(() => document.body.textContent);
+  log(statsText.includes('Total Transactions'), 'Dashboard shows stats');
+  log(statsText.includes('Personal Baseline'), 'Dashboard shows personal baseline');
+  log(statsText.includes('Typical Payment Range'), 'Dashboard shows typical range values');
+
+  // 2. Go to check page
+  await page.goto(`${BASE}/check`, { waitUntil: 'networkidle2' });
+  await waitFor('#recipient-name', page);
+
+  // 3. Fill the FULL DEMO scenario
+  await page.type('#recipient-name', 'Rahul S.');
+  await page.type('#recipient-upi', 'rahul@okbank');
+  await page.type('#amount', '18500');
+  await page.type('#context', 'Cashback / Reward');
+  await page.click('button[type=submit]');
+  await waitFor('.safety-screen', page, 10000);
+  log(true, 'Safety check screen appears');
+  const safetyText = await page.evaluate(() => document.body.innerText);
+  log(safetyText.includes('HIGH CAUTION'), 'Shows HIGH CAUTION');
+  log(safetyText.includes('3 unusual signals'), 'Shows 3 unusual signals');
+  log(safetyText.includes('NEW RECIPIENT'), 'Shows NEW RECIPIENT signal');
+  log(safetyText.includes('UNUSUAL AMOUNT'), 'Shows UNUSUAL AMOUNT signal');
+  log(safetyText.includes('CONTEXT NEEDS VERIFICATION'), 'Shows CONTEXT signal');
+
+  // checklist should start with buttons disabled
+  const verifyDisabled = await page.$eval('button:last-of-type', el => el.disabled);
+  log(verifyDisabled === true, 'Verify & Continue disabled until checklist checked');
+
+  // 4. CANCEL flow
+  const buttons = await page.$$('.safety-actions button');
+  await buttons[0].click(); // Cancel
+  await waitFor('.result-screen', page, 10000);
+  const cancelText = await page.evaluate(() => document.body.innerText);
+  log(cancelText.includes('Payment Cancelled'), 'Cancel shows Payment Cancelled');
+  log(cancelText.includes('No real money was transferred'), 'Shows disclaimer');
+
+  // 5. Re-run and CONTINUE flow (recipient must still be NEW)
+  await page.goto(`${BASE}/check`, { waitUntil: 'networkidle2' });
+  await waitFor('#recipient-name', page);
+  await page.type('#recipient-name', 'Rahul S.');
+  await page.type('#recipient-upi', 'rahul@okbank');
+  await page.type('#amount', '18500');
+  await page.type('#context', 'Cashback / Reward');
+  await page.click('button[type=submit]');
+  await waitFor('.safety-screen', page, 10000);
+  const rerunText = await page.evaluate(() => document.body.innerText);
+  log(rerunText.includes('NEW RECIPIENT'), 'Re-run still flags Rahul as NEW RECIPIENT');
+
+  // check all checklist items
+  const checkboxes = await page.$$('.checklist input');
+  for (const cb of checkboxes) await cb.click();
+  const verifyEnabled = await page.$$('.safety-actions button');
+  await waitFor('button:not(:disabled)', page);
+  await page.$eval('.safety-actions button:last-child', el => el.click());
+  await waitFor('.result-screen', page, 10000);
+  const completeText = await page.evaluate(() => document.body.innerText);
+  log(completeText.includes('Payment Simulation Complete'), 'Continue shows Payment Simulation Complete');
+  log(completeText.includes('SIMULATED PAYMENT'), 'Shows SIMULATED PAYMENT');
+  log(completeText.includes('No real money was transferred'), 'Shows disclaimer on completion');
+
+  // 6. Demo mode scenarios
+  await page.goto(`${BASE}/demo`, { waitUntil: 'networkidle2' });
+  await waitFor('.scenario-card', page, 10000);
+  const demoCount = await page.$$eval('.scenario-card', els => els.length);
+  log(demoCount >= 5, `Demo mode shows ${demoCount} scenarios`);
+
+  // 7. History page
+  await page.goto(`${BASE}/history`, { waitUntil: 'networkidle2' });
+  await waitFor('.history-item', page, 10000);
+  const historyCount = await page.$$eval('.history-item', els => els.length);
+  log(historyCount >= 2, `History shows ${historyCount} transactions`);
+
+  // 8. Validation errors on frontend
+  await page.goto(`${BASE}/check`, { waitUntil: 'networkidle2' });
+  await waitFor('button[type=submit]', page);
+  await page.click('button[type=submit]');
+  const errText = await page.evaluate(() => document.body.innerText);
+  log(errText.includes('recipient') || errText.includes('amount') || errText.includes('UPI'), 'Frontend validation shows error for empty form');
+
+  // 9. MOBILE viewport (375x667) — safety screen must be usable
+  await resetDemo();
+  await page.setViewport({ width: 375, height: 667 });
+  await page.goto(`${BASE}/check`, { waitUntil: 'networkidle2' });
+  await waitFor('#recipient-name', page);
+  await page.type('#recipient-name', 'Rahul S.');
+  await page.type('#recipient-upi', 'rahul@okbank');
+  await page.type('#amount', '18500');
+  await page.type('#context', 'Cashback / Reward');
+  await page.click('button[type=submit]');
+  await waitFor('.safety-screen', page, 10000);
+  const mobileText = await page.evaluate(() => document.body.innerText);
+  log(mobileText.includes('HIGH CAUTION'), 'Mobile: safety check shows HIGH CAUTION');
+
+  const mobileVerifyBtn = await page.$('.safety-actions button:last-child');
+  const btnBox = await mobileVerifyBtn.boundingBox();
+  const btnOk = btnBox && btnBox.width >= 300 && btnBox.y >= 0;
+  log(btnOk === true, 'Mobile: Verify & Continue button fits viewport');
+
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
+  log(overflow === false, 'Mobile: no horizontal overflow on safety screen');
+
+  // 10. TABLET viewport (768x1024) — dashboard must not overflow
+  await page.setViewport({ width: 768, height: 1024 });
+  await page.goto(`${BASE}/`, { waitUntil: 'networkidle2' });
+  await waitFor('.stat-card', page);
+  await new Promise(r => setTimeout(r, 400));
+  const tabletOverflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
+  log(tabletOverflow === false, 'Tablet: no horizontal overflow on dashboard');
+  const navVisible = await page.evaluate(() => {
+    const links = document.querySelectorAll('.nav-links a');
+    return links.length === 4 && links[3].getBoundingClientRect().right <= innerWidth;
+  });
+  log(navVisible === true, 'Tablet: all nav links visible on one row');
+
+  // report console errors
+  const realErrors = errors.filter(e => !e.includes('favicon') && !e.includes('Download the React DevTools'));
+  log(realErrors.length === 0, realErrors.length === 0 ? 'No console/page errors' : `Console errors: ${realErrors.join(' | ')}`);
+  if (realErrors.length) console.log(realErrors.join('\n'));
+
+} catch (err) {
+  console.error('E2E FAILED:', err.message);
+  results.push({ ok: false, msg: err.message });
+} finally {
+  if (browser) await browser.close();
+}
+
+const failed = results.filter(r => !r.ok).length;
+console.log(`\n=== E2E SUMMARY: ${results.length - failed}/${results.length} passed ===`);
+process.exit(failed > 0 ? 1 : 0);

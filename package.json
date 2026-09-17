@@ -1,0 +1,13 @@
+{
+  "name": "upiguard",
+  "version": "1.0.0",
+  "private": true,
+  "description": "UPIGuard - Your Last Check Before You Pay. Hackathon MVP, fully simulated.",
+  "scripts": {
+    "install:all": "npm install --prefix backend && npm install --prefix frontend",
+    "dev:backend": "npm run dev --prefix backend",
+    "dev:frontend": "npm run dev --prefix frontend",
+    "test": "npm run dev",
+    "test:e2e": "npm install --prefix test --no-save && node test/e2e.mjs"
+  }
+}

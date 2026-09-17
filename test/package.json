@@ -1,0 +1,12 @@
+{
+  "name": "upiguard-e2e",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node e2e.mjs",
+    "shots": "node screenshot.mjs"
+  },
+  "devDependencies": {
+    "puppeteer-core": "^23.0.0"
+  }
+}
