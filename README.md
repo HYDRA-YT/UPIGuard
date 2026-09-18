@@ -18,8 +18,10 @@ It answers three questions before any (simulated) payment:
 > ⚠️ **IMPORTANT DISCLAIMER**
 > This is a **hackathon MVP / demo application**. It is **NOT** a real UPI or payment app.
 > It does **NOT** connect to banks, UPI rails, payment gateways, or move real money.
-> All transactions are **simulated**. Authentication is a **demo-only** login using UPI ID + UPI PIN
+> All transactions are **simulated**. Authentication is **demo-only** login using UPI ID + UPI PIN
 > (PINs are plaintext in server config, never hashed, never sent to a bank) with in-memory sessions.
+> The app verifies the session on sign-in and returns to the login screen automatically if a session
+> ever goes stale (e.g. after a backend restart).
 > UPIGuard is **not** an AI fraud detector — it uses transparent, explainable, rule-based safety logic.
 
 ---
@@ -35,7 +37,7 @@ It answers three questions before any (simulated) payment:
 
 ## Features
 
-- **Sign In (UPI ID + UPI PIN)** — demo accounts only; each account has fully **isolated history, recipients, and baseline**. Logout via the avatar chip in the nav.
+- **Sign In (UPI ID + UPI PIN)** — demo accounts only; each account has fully **isolated history, recipients, and baseline**. The session is verified again at sign-in (no dashboard flash on a bad token) and any later `401` returns the app to the login screen. Logout via the button in the nav.
 - **Payment limits (hard caps)** — at most **₹1,00,000 per calendar day** and **₹50,000 per single payment** to one payee. Enforced on the backend (`/api/transactions/check` **and** `/complete`) and previewed live on the payment form via the limits strip.
 - **Transaction Input Module** — simulate a payment (recipient, UPI ID, amount, context, note).
 - **QR Payment Scanner** — scan any UPI QR (camera or pasted) to auto-fill recipient name and UPI ID.
@@ -185,6 +187,7 @@ extreme amounts (capped at 1,00,00,000), missing context, and missing auth token
 | `ravi@gpay` | `2468` | A lighter, different history. |
 
 PINs live in `backend/src/auth/accounts.js` (server-side only, plaintext on purpose — demo).
+Use these demo chips on the login screen (or `POST /api/auth/login` directly) to explore each account's isolated history and the daily-limit story.
 
 ## Setup
 
@@ -238,7 +241,7 @@ The app is two deployables: a **static React bundle** (`frontend/dist`) and a **
 - [ ] Set env vars: `NODE_ENV=production`, `PORT` (host-provided), `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`.
 - [ ] Set `CORS_ORIGIN=https://your-frontend-domain` so the API only accepts requests from your UI.
 - [ ] Leave `RESET_ALLOW_UNSAFE` unset in production — `/api/reset` stays disabled.
-- [ ] Remember sessions are **in-memory**: a restart logs everyone out. The frontend treats any `401` from a data call as "session expired" — it clears the token and returns to the login screen (see `frontend/src/utils/api.js`). Fine for a demo; use a real session store for production.
+- [ ] Remember sessions are **in-memory**: a backend restart clears them and the frontend returns to the login screen on the next request. Fine for a demo; use a real session store for production.
 - [ ] Health check path for your host: `/api/health` → `200` with `"database": "connected"`, `503` when Supabase is unreachable.
 
 ### 2. Frontend — Vercel / Netlify / static hosting
@@ -314,7 +317,7 @@ checks. It also asserts that no unexpected console or page errors occur.
 
 - No real financial credentials, UPI passwords, or OTPs are ever requested or stored.
 - The login uses **demo account PINs** that live server-side in `backend/src/auth/accounts.js` (plaintext on purpose — there is nothing to protect, it is simulated).
-- Sessions are random Bearer tokens held in a server-side in-memory map (`backend/src/auth/sessions.js`); tokens are never persisted client-side beyond the frontend's own localStorage.
+- Sessions are random Bearer tokens held in a server-side in-memory map (`backend/src/auth/sessions.js`); tokens are never persisted client-side beyond the frontend's own localStorage. Every `/api` data route requires a valid token (`requireAuth`), so the session is re-verified on the login screen and any later `401` automatically returns the app to the login screen.
 - Every data query is scoped to the signed-in user (`user_id`), so accounts cannot read each other's history.
 - Hard payment caps (₹50,000 per payment, ₹1,00,000 per day) are enforced on the backend, not just the UI.
 - No real payment rails are ever contacted; transactions are simulated only.

@@ -38,7 +38,7 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
-// Session gate: every remaining /api route needs a valid Bearer token
+// Session gate: every /api data route needs a valid Bearer token
 // (see src/middleware/auth.js). Requests set req.userId for the handlers.
 app.use('/api', require('./middleware/auth').requireAuth);
 

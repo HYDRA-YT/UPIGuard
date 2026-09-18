@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { login } from '../utils/api';
+import { getMe, login } from '../utils/api';
 import { setToken } from '../utils/auth';
 
 const DEMO_ACCOUNTS = [
@@ -27,7 +27,11 @@ export default function Login({ onLogin }) {
     try {
       const res = await login(upiId.trim(), pin.trim());
       setToken(res.token);
-      onLogin(res.user);
+      // Confirm the session round-trips before entering the app. This makes a
+      // stale or immediately-expired token fail HERE on the login screen
+      // instead of momentarily flashing the dashboard and bouncing back.
+      const me = await getMe();
+      onLogin(me.user);
       navigate('/', { replace: true });
     } catch (err) {
       setError(err.message);

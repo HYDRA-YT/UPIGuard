@@ -57,6 +57,7 @@ function Nav({ user, onLogout }) {
 export default function App() {
   const [state, setState] = useState({ status: 'loading', user: null });
 
+  // Boot: a stored token is validated once against the server.
   useEffect(() => {
     if (!getToken()) {
       setState({ status: 'anon', user: null });
@@ -70,6 +71,8 @@ export default function App() {
       });
   }, []);
 
+  // Any 401 from a data call means the session expired (in-memory sessions die
+  // on a backend restart): drop back to the login screen, never a raw error.
   useEffect(() => {
     const expire = () => {
       clearToken();

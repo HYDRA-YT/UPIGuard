@@ -5,7 +5,7 @@ import { clearToken, getToken } from './auth';
 
 const BASE = import.meta.env.VITE_API_URL || '/api';
 const UNAUTHORIZED_EVENT = 'upiguard:unauthorized';
-const AUTH_PATHS = ['/auth/login', '/auth/me'];
+const AUTH_PATHS = ['/auth/login', '/auth/logout', '/auth/me'];
 
 function broadcastUnauthorized() {
   try {
