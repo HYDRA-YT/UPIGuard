@@ -35,6 +35,10 @@ It answers three questions before any (simulated) payment:
 ## Features
 
 - **Transaction Input Module** — simulate a payment (recipient, UPI ID, amount, context, note).
+- **QR Payment Scanner** — scan any UPI QR (camera or pasted) to auto-fill recipient name and UPI ID.
+- **QR Tamper Detector** — flags QR codes that are not genuine `upi://` links, have malformed UPI IDs, embed amounts, or contain scam keywords (cashback/reward/lottery…) with a clear DANGER / CAUTION verdict.
+- **Context Chips** — payment reason is chosen from required clickable chips (Food, Shopping, Rent, Entertainment…) with an **Other…** option.
+- **Demo Mode (locked)** — scenario fields are pre-filled, read-only, and each field explains the condition it demonstrates.
 - **Recipient Module** — detects KNOWN vs NEW recipients from the user's *completed* history.
 - **Amount Check** — compares against the user's **personal baseline** (no universal threshold).
 - **New Recipient Warning** — "First payment to this payee".
@@ -44,7 +48,7 @@ It answers three questions before any (simulated) payment:
 - **Safety Checklist** — "Is the recipient correct? Did you initiate this? …" before continuing.
 - **Pause & Verify Screen** — the deliberate pause before payment; Cancel or Verify & Continue.
 - **Payment Completion / Cancellation** — simulated, with a clear "No real money transferred" label.
-- **Demo Mode** — one-click pre-built scenarios for the live hackathon presentation.
+- **Demo Mode** — one-click pre-built scenarios for the live hackathon presentation. Demo payments are **never recorded** in history — they exist only to understand caution levels.
 - **Demo Reset** — `POST /api/reset` wipes and reseeds Supabase to repeat the demo cleanly (guarded, see below).
 
 ### Risk levels
@@ -249,6 +253,9 @@ All scenarios pass through the real risk engine — nothing is hardcoded.
 6. Checklist: Is the recipient correct? / Did you initiate this payment? / Are you expecting this request? / Have you verified the source?
 7. **CANCEL PAYMENT** → "Payment Cancelled. No money was transferred."
 8. Run it again → **VERIFY & CONTINUE** → "Payment Done — No real money was transferred."
+
+> Demo-mode payments run to completion are **not added to the transaction history** — they exist purely
+> to demonstrate the caution levels. Only payments checked from the normal **Check Payment** page are recorded.
 
 This demonstrates the core idea: **UPIGuard does not block. It explains, pauses, and lets the user decide.**
 

@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { useLocation, Link } from 'react-router-dom';
 import { checkTransaction, completeTransaction, riskBadgeClass } from '../utils/api';
 import { formatAmount, PAYMENT_CONTEXTS } from '../utils/helpers';
+import { analyzeQr } from '../utils/qr';
+import QrScannerModal from '../components/QrScanner';
 
 function PaymentDoneAnimation({ cancelled }) {
   const color = cancelled ? 'var(--red)' : 'var(--green)';
@@ -45,6 +47,8 @@ export default function PaymentCheck() {
   const [checkResult, setCheckResult] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [qrResult, setQrResult] = useState(null);
+  const [scannerOpen, setScannerOpen] = useState(false);
   const [otherMode, setOtherMode] = useState(
     () => Boolean(prefill.context) && !PAYMENT_CONTEXTS.includes(prefill.context)
   );
@@ -88,7 +92,28 @@ export default function PaymentCheck() {
     }
   };
 
+  const handleQrScan = (text) => {
+    const analysis = analyzeQr(text);
+    const p = analysis.parsed || {};
+    if (p.recipientUpi) setRecipientUpi(p.recipientUpi);
+    if (p.recipientName) setRecipientName(p.recipientName);
+    setQrResult({
+      ok: analysis.ok,
+      level: analysis.level,
+      reasons: analysis.reasons,
+      name: p.recipientName || '',
+      upi: p.recipientUpi || '',
+    });
+    setScannerOpen(false);
+    setError('');
+  };
+
   const handleComplete = async (action) => {
+    if (isDemo) {
+      setCheckResult(prev => ({ ...prev, action }));
+      setFormState(STATES.RESULT);
+      return;
+    }
     try {
       const res = await completeTransaction({
         recipientName: checkResult.recipientName,
@@ -245,7 +270,9 @@ export default function PaymentCheck() {
           </strong>
         </div>
         <div className="result-disclaimer">
-          No real money was transferred. This is a simulated transaction.
+          {isDemo
+            ? 'Demo scenario — this payment was NOT recorded in your history. No real money was transferred.'
+            : 'No real money was transferred. This is a simulated transaction.'}
         </div>
         <div className="result-actions">
           <Link to="/" className="btn btn-outline" style={{textDecoration:'none'}}>Back to Dashboard</Link>
@@ -276,7 +303,36 @@ export default function PaymentCheck() {
         </div>
       )}
 
+      {qrResult && (
+        <div className={`qr-banner ${qrResult.ok ? 'ok' : qrResult.level === 'danger' ? 'alert' : 'warn'}`}>
+          <span className="qr-banner-icon">{qrResult.ok ? '✅' : '⚠️'}</span>
+          <div style={{flex:1}}>
+            <strong>
+              {qrResult.ok
+                ? 'QR Verified — Safe to proceed'
+                : qrResult.level === 'danger'
+                  ? 'DANGER — Do not pay this QR'
+                  : 'CAUTION — Verify before paying'}
+            </strong>
+            {qrResult.ok ? (
+              <p>Recipient filled from QR: {qrResult.name || qrResult.upi}</p>
+            ) : (
+              <ul>
+                {qrResult.reasons.map((r, i) => <li key={i}>{r}</li>)}
+              </ul>
+            )}
+          </div>
+          <button type="button" className="qr-banner-close" onClick={() => setQrResult(null)} aria-label="Dismiss QR warning">✕</button>
+        </div>
+      )}
+
       <form onSubmit={handleCheck} className="payment-form">
+        {!isDemo && (
+          <button type="button" className="qr-scan-btn" onClick={() => setScannerOpen(true)}>
+            📷 Scan UPI QR
+          </button>
+        )}
+
         <div className="form-group">
           <label className="form-label" htmlFor="recipient-name">Recipient Name</label>
           <input
@@ -373,6 +429,13 @@ export default function PaymentCheck() {
           {loading ? <><span className="spinner" /> Checking...</> : 'Check Payment'}
         </button>
       </form>
+
+      {scannerOpen && (
+        <QrScannerModal
+          onClose={() => setScannerOpen(false)}
+          onScan={handleQrScan}
+        />
+      )}
     </div>
   );
 }

@@ -29,6 +29,12 @@ async function resetDemo() {
   await new Promise(r => setTimeout(r, 300));
 }
 
+async function apiTxCount() {
+  const res = await fetch('http://localhost:3001/api/transactions/history');
+  const data = await res.json();
+  return data.transactions.length;
+}
+
 try {
   browser = await puppeteer.launch({
     executablePath,
@@ -118,6 +124,27 @@ try {
   const demoCount = await page.$$eval('.scenario-card', els => els.length);
   log(demoCount >= 5, `Demo mode shows ${demoCount} scenarios`);
 
+  // 6b. Demo mode payments must NOT be recorded in history
+  const demoCountBefore = await apiTxCount();
+  await page.click('.scenario-card');
+  await waitFor('.demo-banner', page, 10000);
+  const lockState = await page.evaluate(() => ({
+    disabled: [...document.querySelectorAll('.form-input')].every(i => i.disabled),
+    notes: document.querySelectorAll('.field-note').length,
+  }));
+  log(lockState.disabled === true, 'Demo form fields are locked (read-only)');
+  log(lockState.notes >= 4, `Demo form shows per-field explanations (${lockState.notes})`);
+  await page.click('button[type=submit]');
+  await waitFor('.safety-screen', page, 10000);
+  const demoCheckboxes = await page.$$('.checklist input');
+  for (const cb of demoCheckboxes) await cb.click();
+  await page.$eval('.safety-actions button:last-child', el => el.click());
+  await waitFor('.result-screen', page, 10000);
+  const demoResultText = await page.evaluate(() => document.body.innerText);
+  const demoCountAfter = await apiTxCount();
+  log(demoCountBefore === demoCountAfter, `Demo completion does NOT add to history (${demoCountBefore} === ${demoCountAfter})`);
+  log(demoResultText.includes('NOT recorded in your history'), 'Demo result screen explains history is skipped');
+
   // 7. History page
   await page.goto(`${BASE}/history`, { waitUntil: 'networkidle2' });
   await waitFor('.history-item', page, 10000);
@@ -130,6 +157,35 @@ try {
   await page.click('button[type=submit]');
   const errText = await page.evaluate(() => document.body.innerText);
   log(errText.includes('recipient') || errText.includes('amount') || errText.includes('UPI'), 'Frontend validation shows error for empty form');
+
+  // 8b. QR scanner — paste a tampered UPI QR, it must warn and fill fields
+  await page.goto(`${BASE}/check`, { waitUntil: 'networkidle2' });
+  await waitFor('.qr-scan-btn', page, 10000);
+  await page.click('.qr-scan-btn');
+  await waitFor('.qr-overlay', page, 10000);
+  await page.type('.qr-paste input', 'http://free-rewards.example/pay?pa=lucky@rewards&pn=Cashback%20Reward%20Winner&am=18500');
+  await page.click('.qr-analyze');
+  await waitFor('.qr-banner.alert', page, 10000);
+  const qrBannerText = await page.evaluate(() => document.querySelector('.qr-banner').innerText);
+  log(qrBannerText.includes('DANGER'), 'QR scanner flags tampered QR as DANGER');
+  log(qrBannerText.includes('lucky@rewards'), 'QR warning explains the suspicious UPI ID');
+  const qrFields = await page.evaluate(() => ({
+    name: document.querySelector('#recipient-name').value,
+    upi: document.querySelector('#recipient-upi').value,
+  }));
+  log(qrFields.name.includes('Cashback Reward Winner'), 'QR scan fills recipient name');
+  log(qrFields.upi === 'lucky@rewards', 'QR scan fills recipient UPI ID');
+
+  // 8c. QR scanner — a clean UPI QR must be accepted (green, fields filled)
+  await page.goto(`${BASE}/check`, { waitUntil: 'networkidle2' });
+  await waitFor('.qr-scan-btn', page, 10000);
+  await page.click('.qr-scan-btn');
+  await waitFor('.qr-overlay', page, 10000);
+  await page.type('.qr-paste input', 'upi://pay?pa=priya@okbank&pn=Priya%20Sharma');
+  await page.click('.qr-analyze');
+  await waitFor('.qr-banner.ok', page, 10000);
+  const qrOkFields = await page.evaluate(() => document.querySelector('#recipient-upi').value);
+  log(qrOkFields === 'priya@okbank', 'Clean QR is accepted and fills UPI ID');
 
   // 9. MOBILE viewport (375x667) — safety screen must be usable
   await resetDemo();
