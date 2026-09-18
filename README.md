@@ -18,7 +18,8 @@ It answers three questions before any (simulated) payment:
 > ⚠️ **IMPORTANT DISCLAIMER**
 > This is a **hackathon MVP / demo application**. It is **NOT** a real UPI or payment app.
 > It does **NOT** connect to banks, UPI rails, payment gateways, or move real money.
-> All transactions are **simulated**. There is no authentication, no OTP, no PIN, no real session data.
+> All transactions are **simulated**. Authentication is a **demo-only** login using UPI ID + UPI PIN
+> (PINs are plaintext in server config, never hashed, never sent to a bank) with in-memory sessions.
 > UPIGuard is **not** an AI fraud detector — it uses transparent, explainable, rule-based safety logic.
 
 ---
@@ -34,6 +35,8 @@ It answers three questions before any (simulated) payment:
 
 ## Features
 
+- **Sign In (UPI ID + UPI PIN)** — demo accounts only; each account has fully **isolated history, recipients, and baseline**. Logout via the avatar chip in the nav.
+- **Payment limits (hard caps)** — at most **₹1,00,000 per calendar day** and **₹50,000 per single payment** to one payee. Enforced on the backend (`/api/transactions/check` **and** `/complete`) and previewed live on the payment form via the limits strip.
 - **Transaction Input Module** — simulate a payment (recipient, UPI ID, amount, context, note).
 - **QR Payment Scanner** — scan any UPI QR (camera or pasted) to auto-fill recipient name and UPI ID.
 - **QR Tamper Detector** — flags QR codes that are not genuine `upi://` links, have malformed UPI IDs, embed amounts, or contain scam keywords (cashback/reward/lottery…) with a clear DANGER / CAUTION verdict.
@@ -123,9 +126,12 @@ Supabase (Postgres) via src/db/database.js → src/db/supabaseData.js
 UPIGuard/
 ├── backend/
 │   ├── src/
-│   │   ├── server.js            # Express app entry
-│   │   ├── routes/              # REST API routes
+│   │   ├── server.js            # Express app entry (auth gate + routes)
+│   │   ├── routes/              # REST API routes (incl. auth.js, limits.js)
+│   │   ├── auth/                # demo accounts + in-memory sessions
+│   │   ├── middleware/auth.js   # Bearer-token session guard (requireAuth)
 │   │   ├── engine/riskEngine.js # rule-based risk engine (the core logic)
+│   │   ├── engine/limits.js     # ₹50k/payment + ₹1L/day hard caps
 │   │   ├── db/
 │   │   │   ├── database.js      # data-layer entry (re-exports Supabase)
 │   │   │   └── supabaseData.js  # Supabase data layer (the only one)
@@ -134,33 +140,51 @@ UPIGuard/
 │   └── .env
 ├── frontend/
 │   ├── src/
-│   │   ├── App.jsx              # routes + nav
-│   │   ├── pages/               # Dashboard, PaymentCheck, DemoMode, History
-│   │   ├── utils/api.js         # fetch wrapper
+│   │   ├── App.jsx              # session gate + routes + nav + background FX
+│   │   ├── pages/               # Login, Dashboard, PaymentCheck, DemoMode, History
+│   │   ├── utils/auth.js        # token helpers (localStorage)
+│   │   ├── utils/api.js         # fetch wrapper (Bearer header)
 │   │   ├── utils/helpers.js     # formatting helpers
-│   │   └── index.css            # design system
+│   │   └── index.css            # design system (aurora/grid background FX)
 │   └── vite.config.js           # proxies /api → :3001
-├── supabase/schema.sql          # Supabase tables + seed (for live mode)
+├── supabase/schema.sql          # Supabase tables + seed (3 accounts, for live mode)
 ├── test/                        # E2E tests (puppeteer-core, headless Edge/Chrome)
 └── package.json                 # convenience scripts
 ```
 
 ## API endpoints
 
+> All `/api` routes **except `/api/auth/login` and `/api/health`** require an
+> `Authorization: Bearer <token>` header from `POST /api/auth/login`.
+
 | Method | Endpoint | Purpose |
 | --- | --- | --- |
-| `POST` | `/api/transactions/check` | Evaluate a payment before sending. Body: `{recipientName, recipientUpi, amount, context}`. Returns risk level + explainable signals. |
-| `POST` | `/api/transactions/complete` | Record a **simulated** outcome. Body includes `riskLevel` and `action: 'completed' \| 'cancelled'`. |
-| `GET` | `/api/transactions/history` | All simulated transactions. |
+| `POST` | `/api/auth/login` | Sign in with `{upiId, pin}` → `{token, user}`. |
+| `POST` | `/api/auth/logout` | Invalidate the current session token. |
+| `GET` | `/api/auth/me` | Validate a stored token and return the signed-in user. |
+| `POST` | `/api/transactions/check` | Evaluate a payment before sending. Body: `{recipientName, recipientUpi, amount, context}`. Returns risk level + explainable signals. Rejects amounts above the limits (`400`). |
+| `POST` | `/api/transactions/complete` | Record a **simulated** outcome. Body includes `riskLevel` and `action: 'completed' \| 'cancelled'`. Re-enforces limits before a `completed` action. |
+| `GET` | `/api/transactions/history` | All simulated transactions **for the signed-in user**. |
 | `GET` | `/api/baseline` | Personal payment baseline. |
 | `GET` | `/api/recipients` | Recipients enriched with known/new status. |
-| `GET` | `/api/dashboard` | Summary stats. |
+| `GET` | `/api/dashboard` | Summary stats for the signed-in user. |
+| `GET` | `/api/limits` | `{perPaymentMax, dailyMax, spentToday, remainingToday}` + formatted strings. |
 | `GET` | `/api/demo` | Demo scenarios (and `/api/demo/:id`). |
-| `POST` | `/api/reset` | Wipe + reseed the database. **Disabled (403) unless `RESET_ALLOW_UNSAFE=true`** — it deletes all data. |
+| `POST` | `/api/reset` | Wipe + reseed the database (all three accounts). **Disabled (403) unless `RESET_ALLOW_UNSAFE=true`** — it deletes all data. |
 | `GET` | `/api/health` | Health + Supabase connectivity (`503` when the database is unreachable). |
 
 Input validation covers: missing recipient, invalid UPI ID, invalid/negative amounts,
-extreme amounts (capped at 1,00,00,000), missing context.
+extreme amounts (capped at 1,00,00,000), missing context, and missing auth token (`401`).
+
+### Demo accounts
+
+| UPI ID | UPI PIN | What it demonstrates |
+| --- | --- | --- |
+| `demo@upiguard` | `1234` | Flagship demo — the full 18-transaction history, baseline ₹500 – ₹2,000. |
+| `asha@okbank` | `4321` | **Daily limit** story — ₹90,000 already spent today (₹10,000 left). |
+| `ravi@gpay` | `2468` | A lighter, different history. |
+
+PINs live in `backend/src/auth/accounts.js` (server-side only, plaintext on purpose — demo).
 
 ## Setup
 
@@ -175,7 +199,7 @@ npm install --prefix frontend
 ### 2. Set up Supabase (required — the only data layer)
 
 1. Create a Supabase project.
-2. Open the SQL Editor and run **`supabase/schema.sql`** (creates `users`, `recipients`, `transactions` + seed data; idempotent).
+2. Open the SQL Editor and run **`supabase/schema.sql`** (creates `users`, `recipients`, `transactions` + seed data for the three demo accounts; idempotent).
 3. Copy **`backend/.env.example`** to `backend/.env` and fill in:
 
 ```env
@@ -214,6 +238,7 @@ The app is two deployables: a **static React bundle** (`frontend/dist`) and a **
 - [ ] Set env vars: `NODE_ENV=production`, `PORT` (host-provided), `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`.
 - [ ] Set `CORS_ORIGIN=https://your-frontend-domain` so the API only accepts requests from your UI.
 - [ ] Leave `RESET_ALLOW_UNSAFE` unset in production — `/api/reset` stays disabled.
+- [ ] Remember sessions are **in-memory**: a restart logs everyone out (the frontend falls back to the login screen). Fine for a demo; use a real session store for production.
 - [ ] Health check path for your host: `/api/health` → `200` with `"database": "connected"`, `503` when Supabase is unreachable.
 
 ### 2. Frontend — Vercel / Netlify / static hosting
@@ -242,7 +267,7 @@ All scenarios pass through the real risk engine — nothing is hardcoded.
 
 ### The flagship demo flow
 
-1. Open **UPIGuard** → click **Demo Mode**.
+1. Open **UPIGuard** → sign in with the `demo@upiguard` / `1234` account → click **Demo Mode**.
 2. Select **"New Recipient + Unusual Amount + Cashback"** (or scenario 5).
 3. Shows: Rahul S. · rahul@okbank · ₹18,500 · Cashback / Reward.
 4. Click **CHECK PAYMENT**.
@@ -268,9 +293,10 @@ This demonstrates the core idea: **UPIGuard does not block. It explains, pauses,
 npm run test:e2e                  # uses Edge/Chrome via puppeteer-core
 ```
 
-The suite covers: dashboard, baseline, full demo scenario, cancel flow, continue flow,
-history, validation errors, and mobile/tablet viewport checks. It also asserts that no
-console or page errors occur.
+The suite covers: login (wrong PIN + correct PIN), dashboard, baseline, full demo scenario,
+cancel flow, continue flow, history + per-account history isolation, validation errors,
+QR tamper/clean flows, **per-payment and daily payment limits**, and mobile/tablet viewport
+checks. It also asserts that no unexpected console or page errors occur.
 
 ### Manual test scenarios
 
@@ -286,7 +312,11 @@ console or page errors occur.
 
 ## Security notes (even for a demo)
 
-- No real financial credentials, UPI passwords, PINs, or OTPs are ever requested or stored.
+- No real financial credentials, UPI passwords, or OTPs are ever requested or stored.
+- The login uses **demo account PINs** that live server-side in `backend/src/auth/accounts.js` (plaintext on purpose — there is nothing to protect, it is simulated).
+- Sessions are random Bearer tokens held in a server-side in-memory map (`backend/src/auth/sessions.js`); tokens are never persisted client-side beyond the frontend's own localStorage.
+- Every data query is scoped to the signed-in user (`user_id`), so accounts cannot read each other's history.
+- Hard payment caps (₹50,000 per payment, ₹1,00,000 per day) are enforced on the backend, not just the UI.
 - No real payment rails are ever contacted; transactions are simulated only.
 - All backend inputs are validated and sanitized.
 - Keys live in environment variables; the Supabase service role key is **server-only**.

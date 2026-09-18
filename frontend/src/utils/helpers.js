@@ -18,6 +18,10 @@ export const PAYMENT_CONTEXTS = [
   'EMI',
 ];
 
+// Local defaults so the UI can validate instantly; the live values come from
+// GET /api/limits (backend/src/engine/limits.js is the source of truth).
+export const UPI_LIMITS = { perPaymentMax: 50000, dailyMax: 100000 };
+
 export function formatAmount(amount) {
   return `₹${Number(amount).toLocaleString('en-IN')}`;
 }

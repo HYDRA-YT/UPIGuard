@@ -1,9 +1,13 @@
 const { createClient } = require('@supabase/supabase-js');
-const { DEMO_USER_ID, SEED_RECIPIENTS, SEED_TRANSACTIONS } = require('../seed/demoData');
+const { DEMO_USERS } = require('../seed/demoData');
+const { startOfToday } = require('../engine/limits');
 
 // The one and only data layer: Supabase (Postgres), accessed from the backend
 // with the service-role key. It implements the public API every route uses.
 // NEVER pass SUPABASE_SERVICE_ROLE_KEY anywhere near the frontend.
+//
+// Every query is scoped by userId so each logged-in account only ever sees —
+// and writes — its OWN recipients and transactions (history isolation).
 
 const url = process.env.SUPABASE_URL;
 const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
@@ -33,46 +37,48 @@ async function run(label, query) {
   return data;
 }
 
-async function getUser() {
-  const rows = await run('getUser', table('users').select('*').eq('id', DEMO_USER_ID).limit(1));
-  if (rows && rows.length > 0) return rows[0];
-  // Self-heal: the demo user row was removed — recreate it.
-  const inserted = await run(
-    'getUser(insert)',
-    table('users').insert({ id: DEMO_USER_ID, name: 'Demo User', upi_id: 'demo@upiguard' }).select().single()
+// Recreate a seeded user row if it was removed (self-heal). Seed profiles are
+// static config in demoData.js.
+async function ensureUser(userId) {
+  const seed = DEMO_USERS.find(u => u.id === userId);
+  const rows = await run('getUserById', table('users').select('id').eq('id', userId).limit(1));
+  if (rows && rows.length > 0) return;
+  await run(
+    'getUserById(insert)',
+    table('users').insert({ id: userId, name: seed.name, upi_id: seed.upiId }).select().single()
   );
-  return inserted;
 }
 
-async function getRecipients() {
-  const data = await run('getRecipients', table('recipients').select('*').order('name'));
+async function getUserById(userId) {
+  await ensureUser(userId);
+  const rows = await run('getUserById', table('users').select('*').eq('id', userId).limit(1));
+  return rows[0];
+}
+
+async function getRecipientsForUser(userId) {
+  const data = await run(
+    'getRecipientsForUser',
+    table('recipients').select('*').eq('user_id', userId).order('name')
+  );
   return data || [];
 }
 
-async function findRecipientByUpi(upiId) {
+async function findRecipientByUpi(userId, upiId) {
   const data = await run(
     'findRecipientByUpi',
-    table('recipients').select('*').eq('user_id', DEMO_USER_ID).eq('upi_id', upiId).maybeSingle()
+    table('recipients').select('*').eq('user_id', userId).eq('upi_id', upiId).maybeSingle()
   );
   return data || null;
 }
 
-async function addRecipient(name, upiId) {
-  const existing = await findRecipientByUpi(upiId);
+async function addRecipient(userId, name, upiId) {
+  const existing = await findRecipientByUpi(userId, upiId);
   if (existing) return existing;
   const data = await run(
     'addRecipient',
-    table('recipients').insert({ user_id: DEMO_USER_ID, name, upi_id: upiId }).select().single()
+    table('recipients').insert({ user_id: userId, name, upi_id: upiId }).select().single()
   );
   return data;
-}
-
-async function getTransactions() {
-  const data = await run(
-    'getTransactions',
-    table('transactions').select('*').order('created_at', { ascending: false })
-  );
-  return data || [];
 }
 
 async function getTransactionsForUser(userId) {
@@ -95,20 +101,32 @@ async function getCompletedTransactionsForUser(userId) {
   return data || [];
 }
 
-async function addTransaction(tx) {
+async function getSpentToday(userId) {
+  const data = await run(
+    'getSpentToday',
+    table('transactions')
+      .select('amount')
+      .eq('user_id', userId)
+      .eq('status', 'completed')
+      .gte('created_at', startOfToday().toISOString())
+  );
+  return (data || []).reduce((sum, t) => sum + Number(t.amount), 0);
+}
+
+async function addTransaction(userId, tx) {
   const data = await run(
     'addTransaction',
     table('transactions')
-      .insert({ user_id: DEMO_USER_ID, ...tx, risk_signals: tx.risk_signals ?? [] })
+      .insert({ user_id: userId, ...tx, risk_signals: tx.risk_signals ?? [] })
       .select()
       .single()
   );
   return data;
 }
 
-async function getStats() {
-  const txns = await getTransactions();
-  const completed = await getCompletedTransactionsForUser(DEMO_USER_ID);
+async function getStatsForUser(userId) {
+  const txns = await getTransactionsForUser(userId);
+  const completed = txns.filter(t => t.status === 'completed');
 
   const completedSet = new Set();
   const countByRecipient = {};
@@ -131,38 +149,54 @@ async function getStats() {
   };
 }
 
-// Reset = wipe app data and restore the exact seeded demo state, so the
-// hackathon demo can be repeated cleanly (matches supabase/schema.sql).
+// Reset = wipe app data and restore the exact seeded demo state (all three
+// accounts), so the hackathon demo can be repeated cleanly — matches
+// supabase/schema.sql. Deleting users cascades to recipients + transactions.
 async function resetDemoData() {
-  await run('reset(transactions)', table('transactions').delete().neq('id', '00000000-0000-0000-0000-000000000000'));
-  await run('reset(recipients)', table('recipients').delete().neq('id', '00000000-0000-0000-0000-000000000000'));
+  await run('reset(users)', table('users').delete().neq('id', '00000000-0000-0000-0000-000000000000'));
 
-  await run(
-    'reset(recipients seed)',
-    table('recipients').insert(SEED_RECIPIENTS.map(r => ({ ...r, user_id: DEMO_USER_ID })))
-  );
-  await run(
-    'reset(transactions seed)',
-    table('transactions').insert(
-      SEED_TRANSACTIONS.map(({ daysAgo, ...tx }) => ({
-        ...tx,
-        user_id: DEMO_USER_ID,
-        risk_signals: [],
-        created_at: new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000).toISOString(),
-      }))
-    )
-  );
+  for (const user of DEMO_USERS) {
+    await run(
+      'reset(users seed)',
+      table('users').insert({ id: user.id, name: user.name, upi_id: user.upiId }).select().single()
+    );
+    if (user.recipients && user.recipients.length > 0) {
+      await run(
+        'reset(recipients seed)',
+        table('recipients').insert(user.recipients.map(r => ({ ...r, user_id: user.id })))
+      );
+    }
+    if (user.transactions && user.transactions.length > 0) {
+      await run(
+        'reset(transactions seed)',
+        table('transactions').insert(
+          user.transactions.map(({ daysAgo, ...tx }) => ({
+            ...tx,
+            user_id: user.id,
+            risk_signals: [],
+            created_at: new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000).toISOString(),
+          }))
+        )
+      );
+    }
+  }
+}
+
+// Lightweight health probe (avoids touching demo seed assumptions).
+async function ping() {
+  await run('ping', table('users').select('id').limit(1));
 }
 
 module.exports = {
-  getUser,
-  getRecipients,
+  ping,
+  getUserById,
+  getRecipientsForUser,
   findRecipientByUpi,
   addRecipient,
-  getTransactions,
   getTransactionsForUser,
   getCompletedTransactionsForUser,
+  getSpentToday,
   addTransaction,
-  getStats,
+  getStatsForUser,
   resetDemoData,
 };

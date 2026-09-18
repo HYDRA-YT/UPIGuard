@@ -1,6 +1,7 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
-const { evaluateRisk, calculateBaseline } = require('../engine/riskEngine');
+const { evaluateRisk } = require('../engine/riskEngine');
+const { enforceLimits } = require('../engine/limits');
 const db = require('../db/database');
 const { asyncHandler } = require('../utils/asyncHandler');
 
@@ -18,23 +19,32 @@ router.post('/check', [
   }
 
   const { recipientName, recipientUpi, amount, context } = req.body;
+  const parsedAmount = parseFloat(amount);
 
-  const user = await db.getUser();
-  const userTransactions = await db.getCompletedTransactionsForUser(user.id);
+  // Hard limits come first — no point running the risk check on a payment
+  // that cannot legally go through today.
+  const spentToday = await db.getSpentToday(req.userId);
+  const limitError = enforceLimits({ amount: parsedAmount, spentToday });
+  if (limitError) {
+    return res.status(400).json({ success: false, code: limitError.code, message: limitError.message });
+  }
+
+  const userTransactions = await db.getCompletedTransactionsForUser(req.userId);
 
   const result = evaluateRisk({
     recipientUpi,
-    amount: parseFloat(amount),
+    amount: parsedAmount,
     context,
     transactions: userTransactions,
   });
 
   res.json({
     success: true,
+    spentToday,
     check: {
       recipientName,
       recipientUpi,
-      amount: parseFloat(amount),
+      amount: parsedAmount,
       context,
       riskLevel: result.riskLevel,
       score: result.score,
@@ -61,19 +71,28 @@ router.post('/complete', [
   }
 
   const { recipientName, recipientUpi, amount, context, riskLevel, action } = req.body;
+  const parsedAmount = parseFloat(amount);
 
-  const user = await db.getUser();
-  let recipient = await db.findRecipientByUpi(recipientUpi);
-  if (!recipient) {
-    recipient = await db.addRecipient(recipientName, recipientUpi);
+  // Re-enforce limits at completion as well, so the daily/per-payment caps
+  // hold even if the client skipped the /check call.
+  if (action === 'completed') {
+    const spentToday = await db.getSpentToday(req.userId);
+    const limitError = enforceLimits({ amount: parsedAmount, spentToday });
+    if (limitError) {
+      return res.status(400).json({ success: false, code: limitError.code, message: limitError.message });
+    }
   }
 
-  const tx = await db.addTransaction({
-    user_id: user.id,
+  let recipient = await db.findRecipientByUpi(req.userId, recipientUpi);
+  if (!recipient) {
+    recipient = await db.addRecipient(req.userId, recipientName, recipientUpi);
+  }
+
+  const tx = await db.addTransaction(req.userId, {
     recipient_id: recipient.id,
     recipient_name: recipientName,
     recipient_upi: recipientUpi,
-    amount: parseFloat(amount),
+    amount: parsedAmount,
     context,
     risk_level: riskLevel === 'LOW RISK' ? 'LOW_RISK' : riskLevel.replace(' ', '_').toUpperCase(),
     risk_signals: [],

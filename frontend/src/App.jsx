@@ -1,11 +1,26 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-dom';
 import Dashboard from './pages/Dashboard';
 import PaymentCheck from './pages/PaymentCheck';
 import DemoMode from './pages/DemoMode';
 import History from './pages/History';
+import Login from './pages/Login';
+import { getMe, logout } from './utils/api';
+import { clearToken, getToken } from './utils/auth';
 
-function Nav() {
+function BackgroundFX() {
+  return (
+    <div className="bg-fx" aria-hidden="true">
+      <div className="aurora a1" />
+      <div className="aurora a2" />
+      <div className="aurora a3" />
+      <div className="grid-overlay" />
+      <div className="scanline" />
+    </div>
+  );
+}
+
+function Nav({ user, onLogout }) {
   const loc = useLocation();
   const isActive = (path) => loc.pathname === path ? 'active' : '';
 
@@ -25,18 +40,69 @@ function Nav() {
         <Link to="/demo" className={isActive('/demo')}>Demo Mode</Link>
         <Link to="/history" className={isActive('/history')}>History</Link>
       </div>
-      <div className="demo-badge"><span className="dot" /> DEMO MODE</div>
+      {user && (
+        <div className="nav-user">
+          <span className="nav-user-avatar">{user.name.charAt(0)}</span>
+          <span className="nav-user-meta">
+            <span className="nav-user-name">{user.name}</span>
+            <span className="nav-user-upi">{user.upiId}</span>
+          </span>
+          <button className="logout-btn" onClick={onLogout} aria-label="Log out">Log out</button>
+        </div>
+      )}
     </nav>
   );
 }
 
 export default function App() {
+  const [state, setState] = useState({ status: 'loading', user: null });
+
+  useEffect(() => {
+    if (!getToken()) {
+      setState({ status: 'anon', user: null });
+      return;
+    }
+    getMe()
+      .then(d => setState({ status: 'auth', user: d.user }))
+      .catch(() => {
+        clearToken();
+        setState({ status: 'anon', user: null });
+      });
+  }, []);
+
+  const handleLogin = (user) => setState({ status: 'auth', user });
+
+  const handleLogout = async () => {
+    await logout();
+    clearToken();
+    setState({ status: 'anon', user: null });
+  };
+
+  if (state.status === 'loading') {
+    return <div className="loading">Loading...</div>;
+  }
+
+  if (state.status === 'anon') {
+    return (
+      <BrowserRouter>
+        <BackgroundFX />
+        <main className="container login-container">
+          <Login onLogin={handleLogin} />
+        </main>
+        <footer className="footer">
+          <p>UPIGuard — Venture Hackathon 2026 · Simulated Application · No real money is transferred</p>
+        </footer>
+      </BrowserRouter>
+    );
+  }
+
   return (
     <BrowserRouter>
-      <Nav />
+      <BackgroundFX />
+      <Nav user={state.user} onLogout={handleLogout} />
       <main className="container">
         <Routes>
-          <Route path="/" element={<Dashboard />} />
+          <Route path="/" element={<Dashboard user={state.user} />} />
           <Route path="/check" element={<PaymentCheck />} />
           <Route path="/demo" element={<DemoMode />} />
           <Route path="/history" element={<History />} />

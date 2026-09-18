@@ -23,24 +23,33 @@ app.use((req, res, next) => {
   next();
 });
 
+// Public routes: auth (login is anonymous; logout/me authenticate internally)
+// and health. Everything else under /api requires a session token.
+app.use('/api/auth', require('./routes/auth'));
+
+// Health reports the Supabase data layer's status, so a misconfigured
+// deployment is visible immediately instead of failing on first use.
+app.get('/api/health', async (req, res) => {
+  try {
+    await db.ping();
+    res.json({ status: 'ok', mode: 'supabase', database: 'connected' });
+  } catch (err) {
+    res.status(503).json({ status: 'degraded', mode: 'supabase', database: 'unreachable', error: err.message });
+  }
+});
+
+// Session gate: every remaining /api route needs a valid Bearer token
+// (see src/middleware/auth.js). Requests set req.userId for the handlers.
+app.use('/api', require('./middleware/auth').requireAuth);
+
 app.use('/api/transactions', require('./routes/transactions'));
 app.use('/api/transactions/history', require('./routes/history'));
 app.use('/api/baseline', require('./routes/baseline'));
 app.use('/api/recipients', require('./routes/recipients'));
 app.use('/api/demo', require('./routes/demo'));
 app.use('/api/dashboard', require('./routes/dashboard'));
+app.use('/api/limits', require('./routes/limits'));
 app.use('/api', require('./routes/reset'));
-
-// Health reports the Supabase data layer's status, so a misconfigured
-// deployment is visible immediately instead of failing on first use.
-app.get('/api/health', async (req, res) => {
-  try {
-    await db.getUser();
-    res.json({ status: 'ok', mode: 'supabase', database: 'connected' });
-  } catch (err) {
-    res.status(503).json({ status: 'degraded', mode: 'supabase', database: 'unreachable', error: err.message });
-  }
-});
 
 // JSON 404 for unknown API routes (must come after all API routes).
 app.use('/api', (req, res) => {

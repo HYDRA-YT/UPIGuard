@@ -6,8 +6,7 @@ const { asyncHandler } = require('../utils/asyncHandler');
 const router = express.Router();
 
 router.get('/', asyncHandler(async (req, res) => {
-  const user = await db.getUser();
-  const userTransactions = await db.getCompletedTransactionsForUser(user.id);
+  const userTransactions = await db.getCompletedTransactionsForUser(req.userId);
   const baseline = calculateBaseline(userTransactions);
   res.json({ success: true, baseline });
 }));

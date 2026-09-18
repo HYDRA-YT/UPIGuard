@@ -46,7 +46,9 @@ create index if not exists idx_recipients_user on public.recipients(user_id);
 -- while the app talks to Supabase exclusively from the backend.
 -- ------------------------------------------------------------
 insert into public.users (id, name, upi_id) values
-  ('00000000-0000-0000-0000-000000000001', 'Demo User', 'demo@upiguard')
+  ('00000000-0000-0000-0000-000000000001', 'Demo User', 'demo@upiguard'),
+  ('00000000-0000-0000-0000-000000000002', 'Asha Verma', 'asha@okbank'),
+  ('00000000-0000-0000-0000-000000000003', 'Ravi Kumar', 'ravi@gpay')
 on conflict (id) do nothing;
 
 insert into public.recipients (user_id, name, upi_id) values
@@ -57,7 +59,14 @@ insert into public.recipients (user_id, name, upi_id) values
   ('00000000-0000-0000-0000-000000000001', 'Landlord - Rajesh', 'rajesh.rent@okbank'),
   ('00000000-0000-0000-0000-000000000001', 'College Fee Portal', 'fees@college.edu'),
   ('00000000-0000-0000-0000-000000000001', 'Neeraj Kumar', 'neeraj@gpay'),
-  ('00000000-0000-0000-0000-000000000001', 'Electricity Board', 'eb@billpay')
+  ('00000000-0000-0000-0000-000000000001', 'Electricity Board', 'eb@billpay'),
+  ('00000000-0000-0000-0000-000000000002', 'GroceryMart', 'grocery@mart'),
+  ('00000000-0000-0000-0000-000000000002', 'Investment Desk', 'invest@wealth'),
+  ('00000000-0000-0000-0000-000000000002', 'Sneha Mehra', 'sneha@okbank'),
+  ('00000000-0000-0000-0000-000000000003', 'Kirana Store', 'kirana@pay'),
+  ('00000000-0000-0000-0000-000000000003', 'Arjun Mehta', 'arjun@paytm'),
+  ('00000000-0000-0000-0000-000000000003', 'CabWale', 'ride@cabwale'),
+  ('00000000-0000-0000-0000-000000000003', 'Rent - Grover', 'grover.rent@okbank')
 on conflict (user_id, upi_id) do nothing;
 
 insert into public.transactions
@@ -80,5 +89,18 @@ values
   ('00000000-0000-0000-0000-000000000001', 'Swiggy',       'swiggy@pay',   550,   'Food',         'LOW_RISK', '[]', 'completed', now() - interval '9 days'),
   ('00000000-0000-0000-0000-000000000001', 'Amit Patel',   'amit@upi',     900,   'Friend',       'LOW_RISK', '[]', 'completed', now() - interval '7 days'),
   ('00000000-0000-0000-0000-000000000001', 'Neeraj Kumar', 'neeraj@gpay',  350,   'Shopping',     'LOW_RISK', '[]', 'completed', now() - interval '5 days'),
-  ('00000000-0000-0000-0000-000000000001', 'Zomato',       'payments@zomato', 520, 'Food',        'LOW_RISK', '[]', 'completed', now() - interval '3 days')
+  ('00000000-0000-0000-0000-000000000001', 'Zomato',       'payments@zomato', 520, 'Food',        'LOW_RISK', '[]', 'completed', now() - interval '3 days'),
+  -- Asha Verma — two ₹45,000 payments TODAY mean ₹90,000 of the ₹1,00,000 daily
+  -- cap is already used (demo for the daily-limit story).
+  ('00000000-0000-0000-0000-000000000002', 'Investment Desk', 'invest@wealth', 45000, 'Investment', 'LOW_RISK', '[]', 'completed', now() - interval '2 hours'),
+  ('00000000-0000-0000-0000-000000000002', 'GroceryMart',     'grocery@mart',  45000, 'Shopping',   'LOW_RISK', '[]', 'completed', now() - interval '4 hours'),
+  ('00000000-0000-0000-0000-000000000002', 'Investment Desk', 'invest@wealth', 30000, 'Investment', 'LOW_RISK', '[]', 'completed', now() - interval '6 days'),
+  ('00000000-0000-0000-0000-000000000002', 'Sneha Mehra',     'sneha@okbank',  1200,  'Friend',     'LOW_RISK', '[]', 'completed', now() - interval '20 days'),
+  ('00000000-0000-0000-0000-000000000002', 'GroceryMart',     'grocery@mart',  2500,  'Groceries',  'LOW_RISK', '[]', 'completed', now() - interval '12 days'),
+  -- Ravi Kumar
+  ('00000000-0000-0000-0000-000000000003', 'Kirana Store',   'kirana@pay',        180,  'Groceries',  'LOW_RISK', '[]', 'completed', now() - interval '1 day'),
+  ('00000000-0000-0000-0000-000000000003', 'CabWale',        'ride@cabwale',      450,  'Travel',     'LOW_RISK', '[]', 'completed', now() - interval '4 days'),
+  ('00000000-0000-0000-0000-000000000003', 'Rent - Grover',  'grover.rent@okbank', 25000, 'Rent',     'LOW_RISK', '[]', 'completed', now() - interval '3 days'),
+  ('00000000-0000-0000-0000-000000000003', 'Arjun Mehta',    'arjun@paytm',       650,  'Friend',     'LOW_RISK', '[]', 'completed', now() - interval '8 days'),
+  ('00000000-0000-0000-0000-000000000003', 'Kirana Store',   'kirana@pay',        300,  'Groceries',  'LOW_RISK', '[]', 'completed', now() - interval '12 days')
 on conflict do nothing;

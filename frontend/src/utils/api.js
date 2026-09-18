@@ -1,6 +1,8 @@
 // API base: use VITE_API_URL when the backend is hosted separately
 // (e.g. VITE_API_URL=https://upiguard-api.onrender.com), otherwise
 // default to /api which the Vite dev proxy forwards to localhost:3001.
+import { getToken } from './auth';
+
 const BASE = import.meta.env.VITE_API_URL || '/api';
 
 function extractMessage(data) {
@@ -13,10 +15,14 @@ function extractMessage(data) {
 }
 
 async function request(path, options = {}) {
+  const token = getToken();
   let res;
   try {
     res = await fetch(`${BASE}${path}`, {
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
       ...options,
     });
   } catch {
@@ -34,6 +40,21 @@ async function request(path, options = {}) {
     throw new Error(extractMessage(data) || `Request failed (${res.status})`);
   }
   return data;
+}
+
+export function login(upiId, pin) {
+  return request('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ upiId, pin }),
+  });
+}
+
+export function logout() {
+  return request('/auth/logout', { method: 'POST' }).catch(() => null);
+}
+
+export function getMe() {
+  return request('/auth/me');
 }
 
 export function checkTransaction(payload) {
@@ -68,6 +89,10 @@ export function getDemoScenarios() {
 
 export function getDashboard() {
   return request('/dashboard');
+}
+
+export function getLimits() {
+  return request('/limits');
 }
 
 export function resetDemoData() {

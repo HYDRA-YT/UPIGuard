@@ -11,6 +11,9 @@ const page = await browser.newPage();
 await page.setViewport({ width: 1440, height: 900 });
 
 for (const [name, url, setup] of [
+  ['0_login', `${BASE}/`, async () => {
+    // leave the app on the login screen (no token in a fresh browser)
+  }],
   ['1_dashboard', `${BASE}/`, async () => {}],
   ['2_check_form', `${BASE}/check`, async () => {}],
   ['3_demo', `${BASE}/demo`, async () => {}],
@@ -39,6 +42,21 @@ for (const [name, url, setup] of [
     await page.waitForSelector('.result-screen', { timeout: 10000 });
   }],
 ]) {
+  if (name === '0_login') {
+    await page.goto(url, { waitUntil: 'networkidle2', timeout: 15000 });
+    await page.waitForSelector('#login-upi', { timeout: 10000 });
+    await new Promise(r => setTimeout(r, 800));
+    await page.screenshot({ path: `shots/${name}.png`, fullPage: true });
+    console.log('captured', name);
+
+    // sign in for every page after this
+    await page.type('#login-upi', 'demo@upiguard');
+    await page.type('#login-pin', '1234');
+    await page.click('.login-submit');
+    await page.waitForSelector('.nav-links', { timeout: 10000 });
+    continue;
+  }
+
   await page.goto(url, { waitUntil: 'networkidle2', timeout: 15000 });
   if (setup) await setup();
   await new Promise(r => setTimeout(r, 800));

@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useLocation, Link } from 'react-router-dom';
-import { checkTransaction, completeTransaction, riskBadgeClass } from '../utils/api';
-import { formatAmount, PAYMENT_CONTEXTS } from '../utils/helpers';
+import { checkTransaction, completeTransaction, getLimits, riskBadgeClass } from '../utils/api';
+import { formatAmount, PAYMENT_CONTEXTS, UPI_LIMITS } from '../utils/helpers';
 import { analyzeQr } from '../utils/qr';
 import QrScannerModal from '../components/QrScanner';
 
@@ -49,9 +49,23 @@ export default function PaymentCheck() {
   const [loading, setLoading] = useState(false);
   const [qrResult, setQrResult] = useState(null);
   const [scannerOpen, setScannerOpen] = useState(false);
+  const [limits, setLimits] = useState(null);
   const [otherMode, setOtherMode] = useState(
     () => Boolean(prefill.context) && !PAYMENT_CONTEXTS.includes(prefill.context)
   );
+
+  useEffect(() => {
+    getLimits()
+      .then(d => setLimits(d.limits))
+      .catch(() => {/* ambient strip — backend still enforces */});
+  }, []);
+
+  const limitsInfo = limits || {
+    perPaymentMax: UPI_LIMITS.perPaymentMax,
+    dailyMax: UPI_LIMITS.dailyMax,
+    spentToday: 0,
+    remainingToday: UPI_LIMITS.dailyMax,
+  };
 
   const isOtherContext = otherMode || (Boolean(context) && !PAYMENT_CONTEXTS.includes(context));
 
@@ -72,6 +86,17 @@ export default function PaymentCheck() {
     if (!amount || parseFloat(amount) <= 0) return setError('Enter a valid amount');
     if (!context.trim()) return setError('Select a payment context/reason');
 
+    const amt = parseFloat(amount);
+    if (amt > limitsInfo.perPaymentMax) {
+      return setError(`Maximum ${formatAmount(limitsInfo.perPaymentMax)} per single payment to one payee.`);
+    }
+    if (limitsInfo.spentToday + amt > limitsInfo.dailyMax) {
+      return setError(
+        `Daily payment limit of ${formatAmount(limitsInfo.dailyMax)} would be exceeded. ` +
+        `You have ${formatAmount(limitsInfo.remainingToday)} left today.`
+      );
+    }
+
     setLoading(true);
     setFormState(STATES.CHECKING);
 
@@ -79,7 +104,7 @@ export default function PaymentCheck() {
       const res = await checkTransaction({
         recipientName: recipientName.trim(),
         recipientUpi: recipientUpi.trim(),
-        amount: parseFloat(amount),
+        amount: amt,
         context: context.trim(),
       });
       setCheckResult(res.check);
@@ -325,6 +350,15 @@ export default function PaymentCheck() {
           <button type="button" className="qr-banner-close" onClick={() => setQrResult(null)} aria-label="Dismiss QR warning">✕</button>
         </div>
       )}
+
+      <div className="limits-strip" aria-label="Payment limits">
+        <span className="limits-chip">
+          <span className="limits-dot" />
+          Used today: <strong>{formatAmount(limitsInfo.spentToday)}</strong> / {formatAmount(limitsInfo.dailyMax)}
+        </span>
+        <span className="limits-chip">Remaining today: <strong>{formatAmount(limitsInfo.remainingToday)}</strong></span>
+        <span className="limits-chip">Max per payment: <strong>{formatAmount(limitsInfo.perPaymentMax)}</strong></span>
+      </div>
 
       <form onSubmit={handleCheck} className="payment-form">
         {!isDemo && (

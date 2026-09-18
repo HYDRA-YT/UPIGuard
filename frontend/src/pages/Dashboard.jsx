@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { getDashboard, getBaseline } from '../utils/api';
 import { formatAmount } from '../utils/helpers';
 
-export default function Dashboard() {
+export default function Dashboard({ user }) {
   const [data, setData] = useState(null);
   const [baseline, setBaseline] = useState(null);
   const [error, setError] = useState('');
@@ -28,11 +28,13 @@ export default function Dashboard() {
 
   if (!data) return <div className="loading">Loading...</div>;
 
+  const firstName = user?.name?.split(' ')[0] || 'there';
+
   return (
     <div>
       <div className="page-header">
-        <h1>UPIGuard</h1>
-        <p>Your Last Check Before You Pay.</p>
+        <h1 className="gradient-text">Welcome back, {firstName}</h1>
+        <p>Signed in as <strong>{user?.upiId}</strong> · Your Last Check Before You Pay.</p>
       </div>
 
       <div className="philosophy">

@@ -6,9 +6,8 @@ const { asyncHandler } = require('../utils/asyncHandler');
 const router = express.Router();
 
 router.get('/', asyncHandler(async (req, res) => {
-  const recipients = await db.getRecipients();
-  const user = await db.getUser();
-  const userTransactions = await db.getCompletedTransactionsForUser(user.id);
+  const recipients = await db.getRecipientsForUser(req.userId);
+  const userTransactions = await db.getCompletedTransactionsForUser(req.userId);
 
   const enriched = recipients.map(r => {
     const known = isRecipientKnown(r.upi_id, userTransactions);
