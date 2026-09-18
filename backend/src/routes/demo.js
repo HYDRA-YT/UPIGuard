@@ -14,6 +14,12 @@ const DEMO_SCENARIOS = [
     amount: 1500,
     context: 'Friend',
     expectedRisk: 'LOW RISK',
+    explain: {
+      recipientName: 'Known recipient — you have paid Priya Sharma 4 times before.',
+      recipientUpi: 'This UPI is familiar in your payment history.',
+      amount: '₹1,500 is within your typical range (₹500 – ₹2,000). Nothing unusual in the amount.',
+      context: 'Normal reason (Friend) — everyday payments like this rarely show warning signals.',
+    },
   },
   {
     id: 'scenario-2',
@@ -25,6 +31,12 @@ const DEMO_SCENARIOS = [
     amount: 45000,
     context: 'Shopping',
     expectedRisk: 'CAUTION',
+    explain: {
+      recipientName: 'Known recipient — Amit Patel appears 3 times in your history.',
+      recipientUpi: 'Familiar UPI — amit@upi is already in your history.',
+      amount: '₹45,000 is far above your typical range of ₹500 – ₹2,000 — an unusual amount.',
+      context: 'Reason is normal (Shopping), but the unusually high amount drives the caution alert.',
+    },
   },
   {
     id: 'scenario-3',
@@ -36,6 +48,12 @@ const DEMO_SCENARIOS = [
     amount: 1200,
     context: 'Friend',
     expectedRisk: 'CAUTION',
+    explain: {
+      recipientName: 'NEW recipient — you have never paid Vikram Singh before.',
+      recipientUpi: 'First payment to this UPI (vikram@paytm).',
+      amount: '₹1,200 is within your typical range — the amount is not unusual.',
+      context: 'Normal reason (Friend) — the new recipient is what triggers the warning.',
+    },
   },
   {
     id: 'scenario-4',
@@ -47,6 +65,12 @@ const DEMO_SCENARIOS = [
     amount: 5000,
     context: 'Cashback / Reward claimed',
     expectedRisk: 'HIGH CAUTION',
+    explain: {
+      recipientName: 'Unknown recipient — first payment to Lucky Winners Inc.',
+      recipientUpi: 'lucky@rewards has never been paid before.',
+      amount: '₹5,000 is above your typical range of ₹500 – ₹2,000.',
+      context: 'Suspicious — "Cashback / Reward" is a classic social-engineering trigger.',
+    },
   },
   {
     id: 'scenario-5',
@@ -58,6 +82,12 @@ const DEMO_SCENARIOS = [
     amount: 18500,
     context: 'Cashback / Reward',
     expectedRisk: 'HIGH CAUTION',
+    explain: {
+      recipientName: 'NEW recipient — you have never paid Rahul S. before.',
+      recipientUpi: 'rahul@okbank has never been paid before.',
+      amount: '₹18,500 is much higher than your usual range of ₹500 – ₹2,000.',
+      context: 'High-risk context — cashback / reward requests deserve extra verification.',
+    },
   },
 ];
 

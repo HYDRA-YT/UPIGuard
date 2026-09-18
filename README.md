@@ -248,7 +248,7 @@ All scenarios pass through the real risk engine — nothing is hardcoded.
    - ✓ Payment context needs verification — cashback/reward requests deserve extra verification
 6. Checklist: Is the recipient correct? / Did you initiate this payment? / Are you expecting this request? / Have you verified the source?
 7. **CANCEL PAYMENT** → "Payment Cancelled. No money was transferred."
-8. Run it again → **VERIFY & CONTINUE** → "Payment Simulation Complete — No real money was transferred."
+8. Run it again → **VERIFY & CONTINUE** → "Payment Done — No real money was transferred."
 
 This demonstrates the core idea: **UPIGuard does not block. It explains, pauses, and lets the user decide.**
 

@@ -1,3 +1,23 @@
+export const PAYMENT_CONTEXTS = [
+  'Food',
+  'Groceries',
+  'Shopping',
+  'Travel',
+  'Entertainment',
+  'Rent',
+  'Bills',
+  'Utilities',
+  'Phone',
+  'Internet',
+  'Medical',
+  'Education',
+  'Friend',
+  'Gift',
+  'Donation',
+  'Subscription',
+  'EMI',
+];
+
 export function formatAmount(amount) {
   return `₹${Number(amount).toLocaleString('en-IN')}`;
 }

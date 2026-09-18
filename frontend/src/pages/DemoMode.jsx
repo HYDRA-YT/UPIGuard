@@ -23,6 +23,8 @@ export default function DemoMode() {
   const selectScenario = (s) => {
     navigate('/check', {
       state: {
+        demo: true,
+        explain: s.explain,
         prefill: {
           recipientName: s.recipientName,
           recipientUpi: s.recipientUpi,

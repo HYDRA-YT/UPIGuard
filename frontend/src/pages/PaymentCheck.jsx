@@ -1,7 +1,27 @@
 import React, { useState } from 'react';
 import { useLocation, Link } from 'react-router-dom';
 import { checkTransaction, completeTransaction, riskBadgeClass } from '../utils/api';
-import { formatAmount } from '../utils/helpers';
+import { formatAmount, PAYMENT_CONTEXTS } from '../utils/helpers';
+
+function PaymentDoneAnimation({ cancelled }) {
+  const color = cancelled ? 'var(--red)' : 'var(--green)';
+  const track = cancelled ? 'rgba(248, 113, 113, 0.15)' : 'rgba(52, 211, 153, 0.18)';
+  const glow = cancelled
+    ? 'radial-gradient(circle, rgba(248, 113, 113, 0.35), transparent 70%)'
+    : 'radial-gradient(circle, rgba(52, 211, 153, 0.4), transparent 70%)';
+  const path = cancelled ? 'M44 44 l44 44 M88 44 l-44 44' : 'M46 66 l16 16 l31 -33';
+
+  return (
+    <div className={`pay-success ${cancelled ? 'is-cancelled' : ''}`}>
+      <div className="glow" style={{ background: glow }} />
+      <svg viewBox="0 0 132 132" role="img" aria-label={cancelled ? 'Payment cancelled' : 'Payment successful'}>
+        <circle className="ring-track" cx="66" cy="66" r="52" style={{ stroke: track }} />
+        <circle className="ring" cx="66" cy="66" r="52" style={{ stroke: color }} />
+        <path className="check" d={path} style={{ stroke: color }} />
+      </svg>
+    </div>
+  );
+}
 
 const STATES = {
   FORM: 'form',
@@ -14,6 +34,8 @@ export default function PaymentCheck() {
   const location = useLocation();
 
   const prefill = location.state?.prefill || {};
+  const isDemo = Boolean(location.state?.demo) && Object.keys(prefill).length > 0;
+  const fieldNotes = location.state?.explain || {};
 
   const [formState, setFormState] = useState(STATES.FORM);
   const [recipientName, setRecipientName] = useState(prefill.recipientName || '');
@@ -23,6 +45,11 @@ export default function PaymentCheck() {
   const [checkResult, setCheckResult] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [otherMode, setOtherMode] = useState(
+    () => Boolean(prefill.context) && !PAYMENT_CONTEXTS.includes(prefill.context)
+  );
+
+  const isOtherContext = otherMode || (Boolean(context) && !PAYMENT_CONTEXTS.includes(context));
 
   const [checklist, setChecklist] = useState({
     recipient: false,
@@ -39,7 +66,7 @@ export default function PaymentCheck() {
     if (!recipientName.trim()) return setError('Enter recipient name');
     if (!recipientUpi.trim()) return setError('Enter UPI ID');
     if (!amount || parseFloat(amount) <= 0) return setError('Enter a valid amount');
-    if (!context.trim()) return setError('Enter payment context/reason');
+    if (!context.trim()) return setError('Select a payment context/reason');
 
     setLoading(true);
     setFormState(STATES.CHECKING);
@@ -86,6 +113,7 @@ export default function PaymentCheck() {
     setRecipientUpi('');
     setAmount('');
     setContext('');
+    setOtherMode(false);
     setChecklist({ recipient: false, initiated: false, expecting: false, verified: false });
   };
 
@@ -206,8 +234,8 @@ export default function PaymentCheck() {
     const isCancelled = checkResult.action === 'cancelled';
     return (
       <div className="result-screen">
-        <div className="result-icon">{isCancelled ? '🚫' : '✅'}</div>
-        <h2>{isCancelled ? 'Payment Cancelled' : 'Payment Simulation Complete'}</h2>
+        <PaymentDoneAnimation cancelled={isCancelled} />
+        <h2>{isCancelled ? 'Payment Cancelled' : 'Payment Done'}</h2>
         <div className="result-amount">{formatAmount(checkResult.amount)}</div>
         <div className="result-detail">To: {checkResult.recipientName}</div>
         <div className="result-detail">UPI: {checkResult.recipientUpi}</div>
@@ -231,9 +259,16 @@ export default function PaymentCheck() {
   return (
     <div>
       <div className="page-header">
-        <h1>Check Payment Safety</h1>
-        <p>Enter payment details and UPIGuard will check for unusual signals.</p>
+        <h1>{isDemo ? 'Demo Mode — Payment Check' : 'Check Payment Safety'}</h1>
+        <p>{isDemo ? 'Fields are pre-filled and locked. Each one explains the condition it represents.' : 'Enter payment details and UPIGuard will check for unusual signals.'}</p>
       </div>
+
+      {isDemo && (
+        <div className="demo-banner">
+          <span className="demo-lock">🔒</span>
+          <span><strong>Demo preview — fields cannot be changed.</strong> Read the note under each field to see which condition it demonstrates.</span>
+        </div>
+      )}
 
       {error && (
         <div style={{background:'var(--red-bg)', border:'1px solid rgba(239,68,68,0.3)', borderRadius:'var(--radius-sm)', padding:'12px 16px', marginBottom:'20px', fontSize:'14px', color:'var(--red)'}}>
@@ -250,8 +285,10 @@ export default function PaymentCheck() {
             type="text"
             placeholder="e.g. Rahul S."
             value={recipientName}
+            disabled={isDemo}
             onChange={(e) => setRecipientName(e.target.value)}
           />
+          {isDemo && fieldNotes.recipientName && <p className="field-note">{fieldNotes.recipientName}</p>}
         </div>
 
         <div className="form-group">
@@ -262,8 +299,10 @@ export default function PaymentCheck() {
             type="text"
             placeholder="e.g. rahul@okbank"
             value={recipientUpi}
+            disabled={isDemo}
             onChange={(e) => setRecipientUpi(e.target.value)}
           />
+          {isDemo && fieldNotes.recipientUpi && <p className="field-note">{fieldNotes.recipientUpi}</p>}
         </div>
 
         <div className="form-group">
@@ -278,21 +317,56 @@ export default function PaymentCheck() {
               max="10000000"
               placeholder="0"
               value={amount}
+              disabled={isDemo}
               onChange={(e) => setAmount(e.target.value)}
             />
           </div>
+          {isDemo && fieldNotes.amount && <p className="field-note">{fieldNotes.amount}</p>}
         </div>
 
         <div className="form-group">
-          <label className="form-label" htmlFor="context">Payment Context / Reason</label>
-          <input
-            className="form-input"
-            id="context"
-            type="text"
-            placeholder="e.g. Rent, Food, Friend, Cashback, Reward..."
-            value={context}
-            onChange={(e) => setContext(e.target.value)}
-          />
+          <label className="form-label" htmlFor="context">
+            Payment Context / Reason <span className="required-mark">*</span>
+          </label>
+          <div className="context-pills" role="group" aria-label="Payment context">
+            {PAYMENT_CONTEXTS.map(c => (
+              <button
+                type="button"
+                key={c}
+                className={`context-pill ${context === c ? 'active' : ''}`}
+                disabled={isDemo}
+                onClick={() => { setContext(c); setOtherMode(false); }}
+                aria-pressed={context === c}
+              >
+                {c}
+              </button>
+            ))}
+            <button
+              type="button"
+              className={`context-pill other ${isOtherContext ? 'active' : ''}`}
+              disabled={isDemo}
+              onClick={() => {
+                setOtherMode(true);
+                setContext('');
+                requestAnimationFrame(() => document.getElementById('context')?.focus());
+              }}
+              aria-pressed={isOtherContext}
+            >
+              Other…
+            </button>
+          </div>
+          {isOtherContext && (
+            <input
+              className="form-input context-other-input"
+              id="context"
+              type="text"
+              placeholder="Describe the reason (e.g. Cashback / Reward, Refund, Urgent…)"
+              value={context}
+              disabled={isDemo}
+              onChange={(e) => setContext(e.target.value)}
+            />
+          )}
+          {isDemo && fieldNotes.context && <p className="field-note">{fieldNotes.context}</p>}
         </div>
 
         <button type="submit" className="btn btn-primary btn-lg btn-full" disabled={loading}>

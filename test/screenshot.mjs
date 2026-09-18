@@ -19,6 +19,7 @@ for (const [name, url, setup] of [
     await page.type('#recipient-name', 'Rahul S.');
     await page.type('#recipient-upi', 'rahul@okbank');
     await page.type('#amount', '18500');
+    await page.click('.context-pill.other');
     await page.type('#context', 'Cashback / Reward');
     await page.click('button[type=submit]');
     await page.waitForSelector('.safety-screen', { timeout: 10000 });
@@ -28,6 +29,7 @@ for (const [name, url, setup] of [
     await page.type('#recipient-name', 'Rahul S.');
     await page.type('#recipient-upi', 'rahul@okbank');
     await page.type('#amount', '18500');
+    await page.click('.context-pill.other');
     await page.type('#context', 'Cashback / Reward');
     await page.click('button[type=submit]');
     await page.waitForSelector('.safety-screen', { timeout: 10000 });

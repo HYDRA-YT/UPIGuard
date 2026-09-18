@@ -63,6 +63,7 @@ try {
   await page.type('#recipient-name', 'Rahul S.');
   await page.type('#recipient-upi', 'rahul@okbank');
   await page.type('#amount', '18500');
+  await page.click('.context-pill.other');
   await page.type('#context', 'Cashback / Reward');
   await page.click('button[type=submit]');
   await waitFor('.safety-screen', page, 10000);
@@ -92,6 +93,7 @@ try {
   await page.type('#recipient-name', 'Rahul S.');
   await page.type('#recipient-upi', 'rahul@okbank');
   await page.type('#amount', '18500');
+  await page.click('.context-pill.other');
   await page.type('#context', 'Cashback / Reward');
   await page.click('button[type=submit]');
   await waitFor('.safety-screen', page, 10000);
@@ -106,7 +108,7 @@ try {
   await page.$eval('.safety-actions button:last-child', el => el.click());
   await waitFor('.result-screen', page, 10000);
   const completeText = await page.evaluate(() => document.body.innerText);
-  log(completeText.includes('Payment Simulation Complete'), 'Continue shows Payment Simulation Complete');
+  log(completeText.includes('Payment Done'), 'Continue shows Payment Done');
   log(completeText.includes('SIMULATED PAYMENT'), 'Shows SIMULATED PAYMENT');
   log(completeText.includes('No real money was transferred'), 'Shows disclaimer on completion');
 
@@ -137,6 +139,7 @@ try {
   await page.type('#recipient-name', 'Rahul S.');
   await page.type('#recipient-upi', 'rahul@okbank');
   await page.type('#amount', '18500');
+  await page.click('.context-pill.other');
   await page.type('#context', 'Cashback / Reward');
   await page.click('button[type=submit]');
   await waitFor('.safety-screen', page, 10000);
