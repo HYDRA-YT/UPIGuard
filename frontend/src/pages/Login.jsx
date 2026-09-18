@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { login } from '../utils/api';
 import { setToken } from '../utils/auth';
 
@@ -9,6 +10,7 @@ const DEMO_ACCOUNTS = [
 ];
 
 export default function Login({ onLogin }) {
+  const navigate = useNavigate();
   const [upiId, setUpiId] = useState('');
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
@@ -26,6 +28,7 @@ export default function Login({ onLogin }) {
       const res = await login(upiId.trim(), pin.trim());
       setToken(res.token);
       onLogin(res.user);
+      navigate('/', { replace: true });
     } catch (err) {
       setError(err.message);
       setLoading(false);

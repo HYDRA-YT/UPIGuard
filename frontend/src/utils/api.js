@@ -1,9 +1,19 @@
 // API base: use VITE_API_URL when the backend is hosted separately
 // (e.g. VITE_API_URL=https://upiguard-api.onrender.com), otherwise
 // default to /api which the Vite dev proxy forwards to localhost:3001.
-import { getToken } from './auth';
+import { clearToken, getToken } from './auth';
 
 const BASE = import.meta.env.VITE_API_URL || '/api';
+const UNAUTHORIZED_EVENT = 'upiguard:unauthorized';
+const AUTH_PATHS = ['/auth/login', '/auth/me'];
+
+function broadcastUnauthorized() {
+  try {
+    window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+  } catch {
+    // window may be unavailable in non-browser contexts
+  }
+}
 
 function extractMessage(data) {
   if (!data) return null;
@@ -37,6 +47,10 @@ async function request(path, options = {}) {
   }
 
   if (!res.ok) {
+    if (res.status === 401 && !AUTH_PATHS.some(p => path.startsWith(p))) {
+      clearToken();
+      broadcastUnauthorized();
+    }
     throw new Error(extractMessage(data) || `Request failed (${res.status})`);
   }
   return data;
@@ -98,6 +112,23 @@ export function getLimits() {
 export function resetDemoData() {
   return request('/reset', { method: 'POST' });
 }
+
+export function onUnauthorized(cb) {
+  try {
+    window.addEventListener(UNAUTHORIZED_EVENT, cb);
+  } catch {
+    // non-browser context
+  }
+  return () => {
+    try {
+      window.removeEventListener(UNAUTHORIZED_EVENT, cb);
+    } catch {
+      // non-browser context
+    }
+  };
+}
+
+export { UNAUTHORIZED_EVENT };
 
 // Shared risk-level → badge-class mapping so every page renders
 // CRITICAL (and everything else) consistently.

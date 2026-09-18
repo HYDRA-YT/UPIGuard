@@ -5,7 +5,7 @@ import PaymentCheck from './pages/PaymentCheck';
 import DemoMode from './pages/DemoMode';
 import History from './pages/History';
 import Login from './pages/Login';
-import { getMe, logout } from './utils/api';
+import { getMe, logout, onUnauthorized } from './utils/api';
 import { clearToken, getToken } from './utils/auth';
 
 function BackgroundFX() {
@@ -68,6 +68,14 @@ export default function App() {
         clearToken();
         setState({ status: 'anon', user: null });
       });
+  }, []);
+
+  useEffect(() => {
+    const expire = () => {
+      clearToken();
+      setState({ status: 'anon', user: null });
+    };
+    return onUnauthorized(expire);
   }, []);
 
   const handleLogin = (user) => setState({ status: 'auth', user });

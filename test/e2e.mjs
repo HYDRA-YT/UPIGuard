@@ -345,9 +345,27 @@ try {
   const ashaCount = await page.$$eval('.history-item', els => els.length);
   log(ashaCount !== historyCount, `History isolation: asha(${ashaCount}) ≠ demo(${historyCount})`);
 
+  // 14. Stale session: backend restarts wipe in-memory tokens. Invalidate the
+  // browser's session via the API, then navigate (client-side, no reload) to the
+  // Dashboard. The failed data fetch must bounce to the login screen instead of
+  // showing the raw "Please sign in..." 401 error inline on the dashboard.
+  const browserToken = await page.evaluate(() => localStorage.getItem('upiguard_token'));
+  await fetch(`${API}/auth/logout`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${browserToken}` },
+  });
+  await page.click('.nav-links a:first-child');
+  await waitFor('#login-upi', page, 10000);
+  const bouncedText = await page.evaluate(() => document.body.innerText);
+  log(!bouncedText.includes('Please sign in with your UPI ID'), 'Stale session bounces to login instead of showing the raw auth error');
+
   // report errors. A 401 on /api/auth/login is the intentional wrong-PIN test;
-  // any other 401 (or a real console/page error) is a bug.
-  const badAuths = unauthorized.filter(u => !u.includes('/api/auth/login'));
+  // 401s on the dashboard fetches are the intentional stale-session test (14).
+  const badAuths = unauthorized.filter(u =>
+    !u.includes('/api/auth/login') &&
+    !u.includes('/api/dashboard') &&
+    !u.includes('/api/baseline')
+  );
   log(badAuths.length === 0, badAuths.length === 0 ? 'No unexpected 401 responses' : `Unexpected 401s: ${badAuths.join(', ')}`);
   const realErrors = errors.filter(e =>
     !e.includes('favicon') &&

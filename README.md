@@ -238,7 +238,7 @@ The app is two deployables: a **static React bundle** (`frontend/dist`) and a **
 - [ ] Set env vars: `NODE_ENV=production`, `PORT` (host-provided), `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`.
 - [ ] Set `CORS_ORIGIN=https://your-frontend-domain` so the API only accepts requests from your UI.
 - [ ] Leave `RESET_ALLOW_UNSAFE` unset in production — `/api/reset` stays disabled.
-- [ ] Remember sessions are **in-memory**: a restart logs everyone out (the frontend falls back to the login screen). Fine for a demo; use a real session store for production.
+- [ ] Remember sessions are **in-memory**: a restart logs everyone out. The frontend treats any `401` from a data call as "session expired" — it clears the token and returns to the login screen (see `frontend/src/utils/api.js`). Fine for a demo; use a real session store for production.
 - [ ] Health check path for your host: `/api/health` → `200` with `"database": "connected"`, `503` when Supabase is unreachable.
 
 ### 2. Frontend — Vercel / Netlify / static hosting
